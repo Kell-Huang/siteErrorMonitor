@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -14,7 +15,31 @@ except ZoneInfoNotFoundError:
     print("[ERROR] Missing timezone data. Install tzdata package.")
     sys.exit(1)
 
+# ==================== Rate Limiter ====================
+_rate_lock = threading.Lock()
+_last_request_time = 0.0
+_requests_per_second = 5.0  # default, can be overridden by config.json
 
+
+def set_requests_per_second(value):
+    """Set global requests per second limit, guarding against non-positive values."""
+    global _requests_per_second
+    _requests_per_second = value if value > 0 else 5.0
+
+
+def rate_limited_wait():
+    """Wait if necessary to respect the global request rate limit."""
+    global _last_request_time
+    with _rate_lock:
+        now = time.monotonic()
+        elapsed = now - _last_request_time
+        interval = 1.0 / _requests_per_second
+        if elapsed < interval:
+            time.sleep(interval - elapsed)
+        _last_request_time = time.monotonic()
+
+
+# ==================== File & Env Helpers ====================
 def load_json_file(filepath):
     """Load and return JSON content from filepath, exit on error."""
     try:
@@ -34,14 +59,14 @@ def get_env(name):
     return value
 
 
-def retry_request(method, url, headers, params=None, retries=3, timeout=30):
+# ==================== HTTP Request ====================
+def retry_request(method, url, session, params=None, retries=3, timeout=30):
     """Send HTTP request with retry and exponential backoff."""
     attempts = max(1, retries)
     for attempt in range(1, attempts + 1):
+        rate_limited_wait()
         try:
-            resp = requests.request(
-                method, url, headers=headers, params=params, timeout=timeout
-            )
+            resp = session.request(method, url, params=params, timeout=timeout)
             if resp.status_code == 200:
                 return resp.json()
             print(
@@ -60,16 +85,17 @@ def retry_request(method, url, headers, params=None, retries=3, timeout=30):
     return None
 
 
-def fetch_sites_for_project(base_url, project_id, headers, retry_count, timeout):
+# ==================== API Functions ====================
+def fetch_sites_for_project(base_url, project_id, session, retry_count, timeout):
     """Return list of sites for a project."""
     url = f"{base_url}/projects/{project_id}/sites"
-    data = retry_request("GET", url, headers, retries=retry_count, timeout=timeout)
+    data = retry_request("GET", url, session, retries=retry_count, timeout=timeout)
     if data and data.get("success"):
         return data.get("Sites", [])
     return []
 
 
-def fetch_errors_for_site(base_url, site_id, headers, retry_count, timeout, limit):
+def fetch_errors_for_site(base_url, site_id, session, retry_count, timeout, limit):
     """
     Fetch all errors for a site using pagination.
 
@@ -83,7 +109,7 @@ def fetch_errors_for_site(base_url, site_id, headers, retry_count, timeout, limi
         params = {"offset": offset, "limit": limit}
         url = f"{base_url}/sites/{site_id}/errors"
         data = retry_request(
-            "GET", url, headers, params=params, retries=retry_count, timeout=timeout
+            "GET", url, session, params=params, retries=retry_count, timeout=timeout
         )
         if data is None:
             failed = True
@@ -99,6 +125,7 @@ def fetch_errors_for_site(base_url, site_id, headers, retry_count, timeout, limi
     return all_errors, failed
 
 
+# ==================== Error Filtering ====================
 def is_within_time_range(error_datetime, hours):
     """Return True if Berlin time string is within last N hours."""
     try:
@@ -123,6 +150,7 @@ def filter_errors(errors, time_range_hours):
     return filtered
 
 
+# ==================== DingTalk ====================
 def send_dingtalk(webhook_url, markdown_text, timeout):
     """Send markdown message to DingTalk. Return True on success."""
     payload = {
@@ -154,6 +182,7 @@ def truncate_message(msg, max_len):
     return msg
 
 
+# ==================== Markdown Builder ====================
 def build_markdown(
     keyword,
     project_summary,
@@ -181,13 +210,21 @@ def build_markdown(
     """
     lines = [f"### {keyword} Site Errors Report ({report_date})\n"]
 
-    # Calculate overall summary
     total_active_sites = sum(
         data["total_active_sites"] for data in project_summary.values()
     )
     total_error_sites = sum(
         len(data["error_sites"]) for data in project_summary.values()
     )
+
+    if total_active_sites == 0:
+        lines.append("⚠ No active sites detected for monitoring.")
+        lines.append("\n---")
+        lines.append(
+            "To add or remove monitored projects/sites, please update the config file or contact the administrator."
+        )
+        return "\n".join(lines)
+
     overall_error_rate = (
         round((total_error_sites / total_active_sites) * 100, 1)
         if total_active_sites > 0
@@ -202,12 +239,10 @@ def build_markdown(
     lines.append("---")
     lines.append("")
 
-    # Project details
     for idx, (project_name, data) in enumerate(project_summary.items(), start=1):
         total = data["total_active_sites"]
         error_sites = data["error_sites"]
 
-        # Bold project name with index, no color
         lines.append(f"**{idx}. {project_name}**")
         lines.append("")
 
@@ -220,7 +255,6 @@ def build_markdown(
 
         if error_sites:
             for site in error_sites:
-                # Bold site name
                 lines.append(f"- **{site['site_name']} ({site['site_id']})**:")
                 errors_to_show = site["errors"][:max_errors_per_site]
                 for err in errors_to_show:
@@ -252,6 +286,7 @@ def build_markdown(
     return "\n".join(lines)
 
 
+# ==================== Main ====================
 def main():
     print("=" * 60)
     print("Productsup Site Error Monitor")
@@ -268,6 +303,9 @@ def main():
     retry_count = config.get("retry_count", 3)
     max_concurrency = config.get("max_concurrency", 5)
     show_error_message = config.get("show_error_message", False)
+    requests_per_second = config.get("requests_per_second", 5.0)
+
+    set_requests_per_second(requests_per_second)
 
     monitor_data = load_json_file("monitor_projects.json")
     monitored_projects = monitor_data.get("projects", [])
@@ -278,28 +316,30 @@ def main():
     token = get_env("PRODUCTSUP_TOKEN")
     webhook_str = get_env("DINGTALK_WEBHOOK")
     webhook_urls = [w.strip() for w in webhook_str.split(",") if w.strip()]
-    headers = {"X-Auth-Token": token}
+
+    session = requests.Session()
+    session.headers.update({"X-Auth-Token": token})
 
     print(f"[INFO] Monitored projects configured: {len(monitored_projects)}")
+    print(f"[INFO] Requests per second limit: {_requests_per_second}")
 
-    # Build monitored sites and project summaries
     monitored_sites = []
     project_summary = {}
     for proj in monitored_projects:
         project_id = proj.get("project_id")
         project_name = proj.get("project_name", f"Project_{project_id}")
         sites = fetch_sites_for_project(
-            base_url, project_id, headers, retry_count, timeout
+            base_url, project_id, session, retry_count, timeout
         )
         active_sites = [s for s in sites if s.get("status") == "active"]
         specified_sites = proj.get("sites", [])
 
         if specified_sites:
-            # Only include specified sites that are still active
+            # Use string comparison to avoid type mismatch between config and API
             project_monitored_sites = [
                 s
                 for s in active_sites
-                if s.get("id") in [x.get("site_id") for x in specified_sites]
+                if str(s.get("id")) in [str(x.get("site_id")) for x in specified_sites]
             ]
         else:
             project_monitored_sites = active_sites
@@ -322,6 +362,26 @@ def main():
 
     print(f"[INFO] Monitored active sites: {len(monitored_sites)}")
 
+    if not monitored_sites:
+        print("[WARN] No active monitored sites found. Sending alert message only.")
+        markdown_text = build_markdown(
+            keyword,
+            project_summary,
+            datetime.now().strftime("%Y-%m-%d"),
+            0,
+            show_error_message=show_error_message,
+        )
+        print("\n" + markdown_text)
+        print("\nSending to DingTalk...")
+        sent_any = False
+        for wh in webhook_urls:
+            if send_dingtalk(wh, markdown_text, timeout):
+                sent_any = True
+        if not sent_any:
+            sys.exit(1)
+        print("\n[OK] Site error monitoring completed with warning.")
+        return
+
     print("\n[1/2] Fetching errors for active sites...")
     site_errors = {}
     failed_sites = 0
@@ -331,7 +391,7 @@ def main():
                 fetch_errors_for_site,
                 base_url,
                 s["site_id"],
-                headers,
+                session,
                 retry_count,
                 timeout,
                 errors_limit,
@@ -356,7 +416,6 @@ def main():
                 print(f"  Site {site_id}: ERROR {e}")
 
     print("\n[2/2] Building report...")
-    # Fill error sites into project summary
     for s in monitored_sites:
         pname = s["project_name"]
         site_id = s["site_id"]
