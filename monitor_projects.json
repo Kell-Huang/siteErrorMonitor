@@ -26,6 +26,16 @@
       "sites": []
     },
     {
+      "project_id": "31823",
+      "project_name": "Salesforce All Countries - Master/Products",
+      "sites": []
+    },
+    {
+      "project_id": "32782",
+      "project_name": "Salesforce All Countries - Storefront/Categories",
+      "sites": []
+    },
+    {
       "project_id": "34712",
       "project_name": "Salesforce Commerce Cloud",
       "sites": []
@@ -38,11 +48,6 @@
     {
       "project_id": "38875",
       "project_name": "VidaXL Variations",
-      "sites": []
-    },
-    {
-      "project_id": "47245",
-      "project_name": "Main - Salsify",
       "sites": []
     }
   ]

@@ -161,6 +161,7 @@ def build_markdown(
     failed_sites_count,
     max_errors_per_site=5,
     max_message_len=500,
+    show_error_message=False,
 ):
     """
     Build markdown report text.
@@ -180,10 +181,34 @@ def build_markdown(
     """
     lines = [f"### {keyword} Site Errors Report ({report_date})\n"]
 
-    for project_name, data in project_summary.items():
+    # Calculate overall summary
+    total_active_sites = sum(
+        data["total_active_sites"] for data in project_summary.values()
+    )
+    total_error_sites = sum(
+        len(data["error_sites"]) for data in project_summary.values()
+    )
+    overall_error_rate = (
+        round((total_error_sites / total_active_sites) * 100, 1)
+        if total_active_sites > 0
+        else 0.0
+    )
+
+    lines.append("**Summary**")
+    lines.append(f"- Total active sites monitored: {total_active_sites}")
+    lines.append(f"- Sites with errors: {total_error_sites}")
+    lines.append(f"- Overall error rate: {overall_error_rate}%")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # Project details
+    for idx, (project_name, data) in enumerate(project_summary.items(), start=1):
         total = data["total_active_sites"]
         error_sites = data["error_sites"]
-        lines.append(f"**{project_name}**")
+
+        # Bold project name with index, no color
+        lines.append(f"**{idx}. {project_name}**")
         lines.append("")
 
         if total > 0:
@@ -195,21 +220,20 @@ def build_markdown(
 
         if error_sites:
             for site in error_sites:
-                # Purple site name for visual distinction
-                site_text = (
-                    f"<font color='#7c5cfc'>{site['site_name']} "
-                    f"({site['site_id']})</font>"
-                )
-                lines.append(f"- {site_text}:")
+                # Bold site name
+                lines.append(f"- **{site['site_name']} ({site['site_id']})**:")
                 errors_to_show = site["errors"][:max_errors_per_site]
                 for err in errors_to_show:
-                    msg = truncate_message(err.get("message", ""), max_message_len)
                     error_code = err.get("error", "")
                     classification = err.get("classification", "")
                     dt = err.get("datetime", "")
                     lines.append(f"  - [Error] {error_code} - {classification} - {dt}")
-                    if msg:
-                        lines.append(f"    {msg}")
+
+                    if show_error_message:
+                        msg = truncate_message(err.get("message", ""), max_message_len)
+                        if msg:
+                            lines.append(f"    {msg}")
+
                 additional = len(site["errors"]) - max_errors_per_site
                 if additional > 0:
                     lines.append(f"    + additional {additional} errors")
@@ -243,6 +267,7 @@ def main():
     time_range_hours = config.get("time_range_hours", 24)
     retry_count = config.get("retry_count", 3)
     max_concurrency = config.get("max_concurrency", 5)
+    show_error_message = config.get("show_error_message", False)
 
     monitor_data = load_json_file("monitor_projects.json")
     monitored_projects = monitor_data.get("projects", [])
@@ -350,6 +375,7 @@ def main():
         project_summary,
         report_date,
         failed_sites,
+        show_error_message=show_error_message,
     )
     print("\n" + markdown_text)
 
