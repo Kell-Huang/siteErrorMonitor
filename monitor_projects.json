@@ -1,0 +1,49 @@
+{
+  "projects": [
+    {
+      "project_id": "13231",
+      "project_name": "vidaXL",
+      "sites": []
+    },
+    {
+      "project_id": "13496",
+      "project_name": "Import",
+      "sites": []
+    },
+    {
+      "project_id": "16153",
+      "project_name": "B2B Dropshipment",
+      "sites": []
+    },
+    {
+      "project_id": "24459",
+      "project_name": "BE/CH API",
+      "sites": []
+    },
+    {
+      "project_id": "30420",
+      "project_name": "Salesforce Source",
+      "sites": []
+    },
+    {
+      "project_id": "34712",
+      "project_name": "Salesforce Commerce Cloud",
+      "sites": []
+    },
+    {
+      "project_id": "36224",
+      "project_name": "vidaXL Offers - New",
+      "sites": []
+    },
+    {
+      "project_id": "38875",
+      "project_name": "VidaXL Variations",
+      "sites": []
+    },
+    {
+      "project_id": "47245",
+      "project_name": "Main - Salsify",
+      "sites": []
+    }
+  ]
+}
