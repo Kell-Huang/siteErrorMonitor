@@ -1,0 +1,29 @@
+name: Daily Site Error Check
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # UTC 02:00 = Beijing 10:00
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  check-errors:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests tzdata
+
+      - name: Run site error monitor
+        env:
+          PRODUCTSUP_TOKEN: ${{ secrets.PRODUCTSUP_TOKEN }}
+          DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+        run: python check_site_errors.py
