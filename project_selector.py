@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-"""
-tkinter-based project selector for Site Error Monitor.
-
-Allows user to select projects and optionally specific sites,
-then exports monitor_projects.json.
-"""
-
 import json
 import os
 import sys
@@ -29,10 +21,10 @@ class ProjectSelector:
         self.root.title("Select Projects to Monitor")
         self.root.geometry("1024x1024")
 
-        self.projects = []          # list of project dicts
-        self.project_vars = {}      # project_id -> BooleanVar
-        self.site_vars = {}         # (project_id, site_id) -> BooleanVar
-        self.project_sites = {}     # project_id -> list of sites
+        self.projects = []  # list of project dicts
+        self.project_vars = {}  # project_id -> BooleanVar
+        self.site_vars = {}  # (project_id, site_id) -> BooleanVar
+        self.project_sites = {}  # project_id -> list of sites
 
         self.setup_ui()
         self.load_projects()
@@ -48,12 +40,14 @@ class ProjectSelector:
 
         # Canvas for scrolling
         self.canvas = tk.Canvas(self.root)
-        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.canvas.yview)
+        scrollbar = ttk.Scrollbar(
+            self.root, orient="vertical", command=self.canvas.yview
+        )
         self.scroll_frame = tk.Frame(self.canvas)
 
         self.scroll_frame.bind(
             "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
         )
         self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=scrollbar.set)
@@ -64,8 +58,16 @@ class ProjectSelector:
         # Bottom buttons
         bottom = tk.Frame(self.root)
         bottom.pack(fill=tk.X, padx=10, pady=10)
-        tk.Button(bottom, text="Export Config", command=self.export_config, bg="#7c5cfc", fg="white").pack(fill=tk.X)
-        tk.Label(bottom, text="Tip: Check project to monitor all its active sites.").pack(pady=5)
+        tk.Button(
+            bottom,
+            text="Export Config",
+            command=self.export_config,
+            bg="#7c5cfc",
+            fg="white",
+        ).pack(fill=tk.X)
+        tk.Label(
+            bottom, text="Tip: Check project to monitor all its active sites."
+        ).pack(pady=5)
 
     def load_projects(self):
         """Fetch all projects from API."""
@@ -86,8 +88,7 @@ class ProjectSelector:
             return
         try:
             resp = requests.get(
-                f"{BASE_URL}/projects/{project_id}/sites",
-                headers=HEADERS, timeout=30
+                f"{BASE_URL}/projects/{project_id}/sites", headers=HEADERS, timeout=30
             )
             data = resp.json()
             if data.get("success"):
@@ -117,15 +118,19 @@ class ProjectSelector:
             row = tk.Frame(self.scroll_frame)
             row.pack(fill=tk.X, pady=2)
             cb = tk.Checkbutton(
-                row, text=f"{name} (ID: {pid})", variable=var,
-                command=lambda pid=pid: self.toggle_project(pid)
+                row,
+                text=f"{name} (ID: {pid})",
+                variable=var,
+                command=lambda pid=pid: self.toggle_project(pid),
             )
             cb.pack(side=tk.LEFT)
 
             # Expand button (placeholder)
             expand_btn = tk.Button(
-                row, text="+", width=2,
-                command=lambda pid=pid, row=row: self.toggle_expand(pid, row)
+                row,
+                text="+",
+                width=2,
+                command=lambda pid=pid, row=row: self.toggle_expand(pid, row),
             )
             expand_btn.pack(side=tk.RIGHT)
 
@@ -165,8 +170,7 @@ class ProjectSelector:
             svar = self.site_vars.get((pid, site_id), tk.BooleanVar())
             self.site_vars[(pid, site_id)] = svar
             tk.Checkbutton(
-                site_frame, text=f"{site_name} ({site_id}) - {status}",
-                variable=svar
+                site_frame, text=f"{site_name} ({site_id}) - {status}", variable=svar
             ).pack(anchor=tk.W)
         row.site_frame = site_frame
 
@@ -185,7 +189,7 @@ class ProjectSelector:
                 entry = {
                     "project_id": pid,
                     "project_name": project.get("name", ""),
-                    "sites": []
+                    "sites": [],
                 }
                 # Check selected sites
                 for (proj_id, site_id), svar in self.site_vars.items():
@@ -196,10 +200,9 @@ class ProjectSelector:
                             if s.get("id") == site_id:
                                 site_name = s.get("title") or s.get("name", "")
                                 break
-                        entry["sites"].append({
-                            "site_id": site_id,
-                            "site_name": site_name
-                        })
+                        entry["sites"].append(
+                            {"site_id": site_id, "site_name": site_name}
+                        )
                 config["projects"].append(entry)
 
         with open("monitor_projects.json", "w", encoding="utf-8") as f:

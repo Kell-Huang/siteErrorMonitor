@@ -1,23 +1,9 @@
-#!/usr/bin/env python3
-"""
-Productsup Site Error Monitor
-
-Reads monitored projects from monitor_projects.json, fetches errors for
-active sites only, filters recent Error entries, and sends a summary to
-DingTalk.
-
-Configuration is loaded from config.json. Sensitive values are read from
-environment variables:
-  - PRODUCTSUP_TOKEN : Productsup API token
-  - DINGTALK_WEBHOOK : DingTalk robot webhook URL
-"""
-
 import json
 import os
 import sys
 import time
-from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
@@ -168,40 +154,77 @@ def truncate_message(msg, max_len):
     return msg
 
 
-def build_markdown(keyword, project_error_map, report_date, failed_sites_count,
-                   max_errors_per_site=5, max_message_len=500):
-    """Build markdown report text."""
-    lines = [f"### {keyword} Productsup Site Errors Report ({report_date})\n"]
+def build_markdown(
+    keyword,
+    project_summary,
+    report_date,
+    failed_sites_count,
+    max_errors_per_site=5,
+    max_message_len=500,
+):
+    """
+    Build markdown report text.
 
-    if project_error_map:
-        for project_name, data in project_error_map.items():
-            rate = data["rate"]
-            lines.append(f"**{project_name}**")
-            lines.append("")
-            lines.append(f"**Error rate: {rate[0]}/{rate[1]} ({rate[2]}%)**")
-            for site in data["sites"]:
-                lines.append(f"- Site {site['site_name']} ({site['site_id']}):")
+    project_summary is a dict with project names as keys and values:
+        {
+            "total_active_sites": int,
+            "error_sites": [
+                {
+                    "site_name": str,
+                    "site_id": int,
+                    "errors": [...]
+                },
+                ...
+            ]
+        }
+    """
+    lines = [f"### {keyword} Site Errors Report ({report_date})\n"]
+
+    for project_name, data in project_summary.items():
+        total = data["total_active_sites"]
+        error_sites = data["error_sites"]
+        lines.append(f"**{project_name}**")
+        lines.append("")
+
+        if total > 0:
+            error_count = len(error_sites)
+            percent = round((error_count / total) * 100, 1)
+            lines.append(f"**Error rate: {error_count}/{total} ({percent}%)**")
+        else:
+            lines.append("**No active monitored sites**")
+
+        if error_sites:
+            for site in error_sites:
+                # Purple site name for visual distinction
+                site_text = (
+                    f"<font color='#7c5cfc'>{site['site_name']} "
+                    f"({site['site_id']})</font>"
+                )
+                lines.append(f"- {site_text}:")
                 errors_to_show = site["errors"][:max_errors_per_site]
                 for err in errors_to_show:
                     msg = truncate_message(err.get("message", ""), max_message_len)
                     error_code = err.get("error", "")
                     classification = err.get("classification", "")
                     dt = err.get("datetime", "")
-                    lines.append(
-                        f"  - [Error] {error_code} - {classification} - {dt}"
-                    )
+                    lines.append(f"  - [Error] {error_code} - {classification} - {dt}")
                     if msg:
                         lines.append(f"    {msg}")
                 additional = len(site["errors"]) - max_errors_per_site
                 if additional > 0:
                     lines.append(f"    + additional {additional} errors")
-            lines.append("")
-    else:
-        lines.append("✅ No errors found in all monitored active sites.")
+        else:
+            lines.append("✅ No errors found in this project")
+
+        lines.append("")
 
     if failed_sites_count > 0:
         lines.append(f"\n⚠ {failed_sites_count} sites failed to check")
 
+    lines.append("\n---")
+    lines.append(
+        "To add or remove monitored projects/sites, please update the config file or contact the administrator."
+    )
     return "\n".join(lines)
 
 
@@ -211,7 +234,9 @@ def main():
     print("=" * 60)
 
     config = load_json_file("config.json")
-    base_url = config.get("pu_base_url", "https://platform-api.productsup.io/platform/v2")
+    base_url = config.get(
+        "pu_base_url", "https://platform-api.productsup.io/platform/v2"
+    )
     errors_limit = config.get("errors_limit", 500)
     timeout = config.get("timeout", 30)
     keyword = config.get("keyword", "")
@@ -226,12 +251,15 @@ def main():
         sys.exit(1)
 
     token = get_env("PRODUCTSUP_TOKEN")
-    webhook = get_env("DINGTALK_WEBHOOK")
+    webhook_str = get_env("DINGTALK_WEBHOOK")
+    webhook_urls = [w.strip() for w in webhook_str.split(",") if w.strip()]
     headers = {"X-Auth-Token": token}
 
     print(f"[INFO] Monitored projects configured: {len(monitored_projects)}")
 
+    # Build monitored sites and project summaries
     monitored_sites = []
+    project_summary = {}
     for proj in monitored_projects:
         project_id = proj.get("project_id")
         project_name = proj.get("project_name", f"Project_{project_id}")
@@ -242,22 +270,30 @@ def main():
         specified_sites = proj.get("sites", [])
 
         if specified_sites:
-            for s in active_sites:
-                if s.get("id") in [x.get("site_id") for x in specified_sites]:
-                    monitored_sites.append({
-                        "project_id": project_id,
-                        "project_name": project_name,
-                        "site_id": s.get("id"),
-                        "site_name": s.get("title") or s.get("name", ""),
-                    })
+            # Only include specified sites that are still active
+            project_monitored_sites = [
+                s
+                for s in active_sites
+                if s.get("id") in [x.get("site_id") for x in specified_sites]
+            ]
         else:
-            for s in active_sites:
-                monitored_sites.append({
+            project_monitored_sites = active_sites
+
+        total_active_sites = len(project_monitored_sites)
+        project_summary[project_name] = {
+            "total_active_sites": total_active_sites,
+            "error_sites": [],
+        }
+
+        for s in project_monitored_sites:
+            monitored_sites.append(
+                {
                     "project_id": project_id,
                     "project_name": project_name,
                     "site_id": s.get("id"),
                     "site_name": s.get("title") or s.get("name", ""),
-                })
+                }
+            )
 
     print(f"[INFO] Monitored active sites: {len(monitored_sites)}")
 
@@ -295,41 +331,34 @@ def main():
                 print(f"  Site {site_id}: ERROR {e}")
 
     print("\n[2/2] Building report...")
-    project_active_count = {}
-    for s in monitored_sites:
-        pname = s["project_name"]
-        project_active_count[pname] = project_active_count.get(pname, 0) + 1
-
-    project_error_map = {}
+    # Fill error sites into project summary
     for s in monitored_sites:
         pname = s["project_name"]
         site_id = s["site_id"]
         if site_id in site_errors:
-            if pname not in project_error_map:
-                project_error_map[pname] = {"sites": [], "rate": (0, 0)}
-            project_error_map[pname]["sites"].append({
-                "site_name": s["site_name"],
-                "site_id": site_id,
-                "errors": site_errors[site_id],
-            })
-
-    for pname in project_error_map:
-        error_count = len(project_error_map[pname]["sites"])
-        total_count = project_active_count.get(pname, 0)
-        percent = round((error_count / total_count) * 100, 1) if total_count > 0 else 0
-        project_error_map[pname]["rate"] = (error_count, total_count, percent)
+            project_summary[pname]["error_sites"].append(
+                {
+                    "site_name": s["site_name"],
+                    "site_id": site_id,
+                    "errors": site_errors[site_id],
+                }
+            )
 
     report_date = datetime.now().strftime("%Y-%m-%d")
     markdown_text = build_markdown(
         keyword,
-        project_error_map,
+        project_summary,
         report_date,
         failed_sites,
     )
     print("\n" + markdown_text)
 
     print("\nSending to DingTalk...")
-    if not send_dingtalk(webhook, markdown_text, timeout):
+    sent_any = False
+    for wh in webhook_urls:
+        if send_dingtalk(wh, markdown_text, timeout):
+            sent_any = True
+    if not sent_any:
         sys.exit(1)
 
     print("\n[OK] Site error monitoring completed.")
