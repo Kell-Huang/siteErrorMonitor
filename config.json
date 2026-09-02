@@ -1,6 +1,6 @@
 {
   "keyword": "productsup",
-  "time_range_hours": 24,
+  "time_range_hours": 48,
   "retry_count": 3,
   "max_concurrency": 3,
   "pu_base_url": "https://platform-api.productsup.io/platform/v2",
