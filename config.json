@@ -7,5 +7,10 @@
   "errors_limit": 500,
   "timeout": 30,
   "show_error_message": false,
-  "requests_per_second": 5
+  "requests_per_second": 3,
+  "import_history_limit": 100,
+  "recent_processes_count": 2,
+  "max_failed_sites_display": 5,
+  "max_errors_per_site": 5,
+  "max_message_len": 500
 }
