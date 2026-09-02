@@ -36,7 +36,9 @@ class ProjectSelector:
         self.search_var = tk.StringVar()
         self.search_var.trace("w", lambda *args: self.filter_projects())
         tk.Label(top, text="Search:").pack(side=tk.LEFT)
-        tk.Entry(top, textvariable=self.search_var, width=30).pack(side=tk.LEFT, padx=5)
+        tk.Entry(top, textvariable=self.search_var, width=30).pack(
+            side=tk.LEFT, padx=5
+        )
 
         # Canvas for scrolling
         self.canvas = tk.Canvas(self.root)
@@ -47,9 +49,13 @@ class ProjectSelector:
 
         self.scroll_frame.bind(
             "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+            lambda e: self.canvas.configure(
+                scrollregion=self.canvas.bbox("all")
+            ),
         )
-        self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        self.canvas.create_window(
+            (0, 0), window=self.scroll_frame, anchor="nw"
+        )
         self.canvas.configure(yscrollcommand=scrollbar.set)
 
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
@@ -72,7 +78,9 @@ class ProjectSelector:
     def load_projects(self):
         """Fetch all projects from API."""
         try:
-            resp = requests.get(f"{BASE_URL}/projects", headers=HEADERS, timeout=30)
+            resp = requests.get(
+                f"{BASE_URL}/projects", headers=HEADERS, timeout=30
+            )
             data = resp.json()
             if not data.get("success"):
                 messagebox.showerror("Error", "Failed to load projects")
@@ -88,7 +96,9 @@ class ProjectSelector:
             return
         try:
             resp = requests.get(
-                f"{BASE_URL}/projects/{project_id}/sites", headers=HEADERS, timeout=30
+                f"{BASE_URL}/projects/{project_id}/sites",
+                headers=HEADERS,
+                timeout=30,
             )
             data = resp.json()
             if data.get("success"):
@@ -170,7 +180,9 @@ class ProjectSelector:
             svar = self.site_vars.get((pid, site_id), tk.BooleanVar())
             self.site_vars[(pid, site_id)] = svar
             tk.Checkbutton(
-                site_frame, text=f"{site_name} ({site_id}) - {status}", variable=svar
+                site_frame,
+                text=f"{site_name} ({site_id}) - {status}",
+                variable=svar,
             ).pack(anchor=tk.W)
         row.site_frame = site_frame
 
@@ -183,7 +195,9 @@ class ProjectSelector:
         config = {"projects": []}
         for pid, var in self.project_vars.items():
             if var.get():
-                project = next((p for p in self.projects if p.get("id") == pid), None)
+                project = next(
+                    (p for p in self.projects if p.get("id") == pid), None
+                )
                 if not project:
                     continue
                 entry = {
@@ -207,7 +221,9 @@ class ProjectSelector:
 
         with open("monitor_projects.json", "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
-        messagebox.showinfo("Success", "monitor_projects.json exported successfully")
+        messagebox.showinfo(
+            "Success", "monitor_projects.json exported successfully"
+        )
 
 
 def main():

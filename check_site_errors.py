@@ -1,8 +1,8 @@
 import json
 import os
 import sys
-import time
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -16,10 +16,10 @@ except ZoneInfoNotFoundError:
     sys.exit(1)
 
 # ==================== Rate Limiter ====================
-_rate_lock = threading.Lock()          # protects _last_request_time
-_rps_lock = threading.Lock()           # protects _requests_per_second
+_rate_lock = threading.Lock()  # protects _last_request_time
+_rps_lock = threading.Lock()  # protects _requests_per_second
 _last_request_time = 0.0
-_requests_per_second = 5.0             # default, can be overridden by config.json
+_requests_per_second = 5.0  # default, can be overridden by config.json
 
 
 def set_requests_per_second(value):
@@ -119,7 +119,9 @@ def fetch_sites_for_project(base_url, project_id, retry_count, timeout):
     """
     url = f"{base_url}/projects/{project_id}/sites"
     with create_session() as session:
-        data = retry_request("GET", url, session, retries=retry_count, timeout=timeout)
+        data = retry_request(
+            "GET", url, session, retries=retry_count, timeout=timeout
+        )
     if data is None or not data.get("success"):
         return [], True
     return data.get("Sites", []) or [], False
@@ -134,14 +136,22 @@ def fetch_import_history(base_url, site_id, retry_count, timeout, limit=100):
     url = f"{base_url}/sites/{site_id}/importhistory"
     params = {"limit": limit}
     with create_session() as session:
-        data = retry_request("GET", url, session, params=params,
-                            retries=retry_count, timeout=timeout)
+        data = retry_request(
+            "GET",
+            url,
+            session,
+            params=params,
+            retries=retry_count,
+            timeout=timeout,
+        )
     if data is None or not data.get("success"):
         return [], True
     return data.get("Importhistory", []) or [], False
 
 
-def fetch_errors_for_site(base_url, site_id, retry_count, timeout, limit, pid=None):
+def fetch_errors_for_site(
+    base_url, site_id, retry_count, timeout, limit, pid=None
+):
     """
     Fetch all errors for a site (optionally for a specific process id).
     Returns:
@@ -161,8 +171,12 @@ def fetch_errors_for_site(base_url, site_id, retry_count, timeout, limit, pid=No
                 params["pid"] = pid
             url = f"{base_url}/sites/{site_id}/errors"
             data = retry_request(
-                "GET", url, session, params=params,
-                retries=retry_count, timeout=timeout
+                "GET",
+                url,
+                session,
+                params=params,
+                retries=retry_count,
+                timeout=timeout,
             )
             if data is None:
                 failed = True
@@ -231,7 +245,9 @@ def is_recent_import(import_time_utc_str, hours):
     Return True if import_time_utc string is within last N hours.
     Expects UTC time string without timezone.
     """
-    dt_utc = _parse_datetime_robust(import_time_utc_str, assume_tz=timezone.utc)
+    dt_utc = _parse_datetime_robust(
+        import_time_utc_str, assume_tz=timezone.utc
+    )
     if dt_utc is None:
         return False
     now_utc = datetime.now(timezone.utc)
@@ -320,7 +336,7 @@ def build_markdown(
     report_date,
     failed_sites_count,
     failed_projects_count=0,
-    failed_sites_list=None,   # list of site names or dicts
+    failed_sites_list=None,  # list of site names or dicts
     max_errors_per_site=5,
     max_message_len=500,
     max_failed_sites_display=5,
@@ -372,7 +388,9 @@ def build_markdown(
         lines.append("")
 
     # Projects loop (always executed)
-    for idx, (project_name, data) in enumerate(project_summary.items(), start=1):
+    for idx, (project_name, data) in enumerate(
+        project_summary.items(), start=1
+    ):
         total = data.get("total_active_sites", 0)
         error_sites = data.get("error_sites", [])
         status = data.get("status", "ok")
@@ -393,7 +411,9 @@ def build_markdown(
             pass  # no further details
         elif error_sites:
             for site in error_sites:
-                site_name = site.get("site_name", f"Site {site.get('site_id')}")
+                site_name = site.get(
+                    "site_name", f"Site {site.get('site_id')}"
+                )
                 lines.append(f"- **{site_name} ({site.get('site_id')})**:")
                 errors_to_show = site["errors"][:max_errors_per_site]
                 for err in errors_to_show:
@@ -425,7 +445,9 @@ def build_markdown(
         if failed_sites_list:
             # Take first N sites
             show_failed = failed_sites_list[:max_failed_sites_display]
-            lines.append(f"Failed sites (showing up to {max_failed_sites_display}):")
+            lines.append(
+                f"Failed sites (showing up to {max_failed_sites_display}):"
+            )
             for item in show_failed:
                 if isinstance(item, dict):
                     name = item.get("site_name", f"Site {item.get('site_id')}")
@@ -433,7 +455,9 @@ def build_markdown(
                     name = str(item)
                 lines.append(f"  - {name}")
             if len(failed_sites_list) > max_failed_sites_display:
-                lines.append(f"  ... and {len(failed_sites_list) - max_failed_sites_display} more")
+                lines.append(
+                    f"  ... and {len(failed_sites_list) - max_failed_sites_display} more"
+                )
     lines.append("\n---")
     lines.append(
         "To add or remove monitored projects/sites, please update the config file or contact the administrator."
@@ -470,20 +494,28 @@ def main():
     # Validate numeric parameters
     def validate_positive_int(value, default, name):
         if value is None or not isinstance(value, int) or value <= 0:
-            print(f"[WARN] Invalid {name} value '{value}', using default {default}")
+            print(
+                f"[WARN] Invalid {name} value '{value}', using default {default}"
+            )
             return default
         return value
 
     def validate_positive_float(value, default, name):
         if value is None or not isinstance(value, (int, float)) or value <= 0:
-            print(f"[WARN] Invalid {name} value '{value}', using default {default}")
+            print(
+                f"[WARN] Invalid {name} value '{value}', using default {default}"
+            )
             return default
         return float(value)
 
     retry_count = validate_positive_int(retry_count, 3, "retry_count")
     errors_limit = validate_positive_int(errors_limit, 500, "errors_limit")
-    max_concurrency = validate_positive_int(max_concurrency, 5, "max_concurrency")
-    time_range_hours = validate_positive_int(time_range_hours, 24, "time_range_hours")
+    max_concurrency = validate_positive_int(
+        max_concurrency, 5, "max_concurrency"
+    )
+    time_range_hours = validate_positive_int(
+        time_range_hours, 24, "time_range_hours"
+    )
     timeout = validate_positive_int(timeout, 30, "timeout")
     requests_per_second = validate_positive_float(
         requests_per_second, 5.0, "requests_per_second"
@@ -533,7 +565,9 @@ def main():
             base_url, project_id, retry_count, timeout
         )
         if failed:
-            print(f"[ERROR] Failed to fetch sites for project: {project_name} (ID: {project_id})")
+            print(
+                f"[ERROR] Failed to fetch sites for project: {project_name} (ID: {project_id})"
+            )
             failed_projects.append(project_name)
             # Mark this project as failed in summary
             project_summary[project_name] = {
@@ -550,7 +584,8 @@ def main():
             project_monitored_sites = [
                 s
                 for s in active_sites
-                if str(s.get("id")) in [str(x.get("site_id")) for x in specified_sites]
+                if str(s.get("id"))
+                in [str(x.get("site_id")) for x in specified_sites]
             ]
         else:
             project_monitored_sites = active_sites
@@ -577,7 +612,9 @@ def main():
     print(f"[INFO] Monitored active sites: {len(monitored_sites)}")
 
     if not monitored_sites:
-        print("[WARN] No active monitored sites found. Sending alert message only.")
+        print(
+            "[WARN] No active monitored sites found. Sending alert message only."
+        )
         markdown_text = build_markdown(
             keyword,
             project_summary,
@@ -600,9 +637,11 @@ def main():
         print("\n[OK] Site error monitoring completed with warning.")
         return
 
-    print("\n[1/2] Fetching errors for active sites (including historical processes)...")
-    site_errors = {}          # site_id -> list of Error entries (filtered)
-    failed_sites_info = {}    # site_id -> site_name for failed sites
+    print(
+        "\n[1/2] Fetching errors for active sites (including historical processes)..."
+    )
+    site_errors = {}  # site_id -> list of Error entries (filtered)
+    failed_sites_info = {}  # site_id -> site_name for failed sites
     failed_sites_lock = threading.Lock()
     error_futures_lock = threading.Lock()
 
@@ -620,7 +659,7 @@ def main():
             s["site_id"],
             retry_count,
             timeout,
-            import_history_limit  # Use configurable limit
+            import_history_limit,  # Use configurable limit
         )
         history_futures.append((future, s))
 
@@ -633,26 +672,38 @@ def main():
             if hist_failed:
                 with failed_sites_lock:
                     failed_sites_info[site_id] = s["site_name"]
-                print(f"  Site {site_id} ({s['site_name']}): [ERROR] Failed to fetch import history")
+                print(
+                    f"  Site {site_id} ({s['site_name']}): [ERROR] Failed to fetch import history"
+                )
                 return
 
             # Filter history records by time_range_hours
             recent_records = []
             for rec in history:
-                import_time = rec.get("import_time_utc") or rec.get("import_time")
-                if import_time and is_recent_import(import_time, time_range_hours):
+                import_time = rec.get("import_time_utc") or rec.get(
+                    "import_time"
+                )
+                if import_time and is_recent_import(
+                    import_time, time_range_hours
+                ):
                     recent_records.append(rec)
 
             # Keep only latest N from filtered records
             # (history is already sorted desc by import_time, but we can sort to be safe)
             recent_records.sort(
-                key=lambda x: x.get("import_time_utc") or x.get("import_time") or "",
-                reverse=True
+                key=lambda x: x.get("import_time_utc")
+                or x.get("import_time")
+                or "",
+                reverse=True,
             )
-            recent_records = recent_records[:recent_processes_count]  # configurable count
+            recent_records = recent_records[
+                :recent_processes_count
+            ]  # configurable count
 
             if not recent_records:
-                print(f"  Site {site_id} ({s['site_name']}): no recent import processes found, skipping.")
+                print(
+                    f"  Site {site_id} ({s['site_name']}): no recent import processes found, skipping."
+                )
                 return
 
             pids = []
@@ -662,7 +713,9 @@ def main():
                     pids.append(pid)
             pids = list(dict.fromkeys(pids))  # deduplicate
 
-            print(f"  Site {site_id} ({s['site_name']}): found {len(pids)} recent processes")
+            print(
+                f"  Site {site_id} ({s['site_name']}): found {len(pids)} recent processes"
+            )
 
             for pid in pids:
                 err_future = error_executor.submit(
@@ -680,7 +733,9 @@ def main():
         except Exception as e:
             with failed_sites_lock:
                 failed_sites_info[site_id] = s["site_name"]
-            print(f"  Site {site_id} ({s['site_name']}): [ERROR] Exception in history callback: {e}")
+            print(
+                f"  Site {site_id} ({s['site_name']}): [ERROR] Exception in history callback: {e}"
+            )
 
     # Register callbacks
     for future, s in history_futures:
@@ -724,9 +779,13 @@ def main():
         filtered = filter_errors(all_errors, time_range_hours)
         if filtered:
             site_errors[site_id] = filtered
-            print(f"  Site {site_id} ({s['site_name']}): {len(filtered)} error(s) after filtering")
+            print(
+                f"  Site {site_id} ({s['site_name']}): {len(filtered)} error(s) after filtering"
+            )
         else:
-            print(f"  Site {site_id} ({s['site_name']}): 0 errors after filtering")
+            print(
+                f"  Site {site_id} ({s['site_name']}): 0 errors after filtering"
+            )
 
     print("\n[2/2] Building report...")
     # Attach errors to project summary
