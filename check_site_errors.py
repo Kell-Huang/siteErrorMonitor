@@ -299,7 +299,7 @@ def main():
     errors_limit = config.get("errors_limit", 500)
     timeout = config.get("timeout", 30)
     keyword = config.get("keyword", "")
-    time_range_hours = config.get("time_range_hours", 48)
+    time_range_hours = config.get("time_range_hours", 24)
     retry_count = config.get("retry_count", 3)
     max_concurrency = config.get("max_concurrency", 5)
     show_error_message = config.get("show_error_message", False)
